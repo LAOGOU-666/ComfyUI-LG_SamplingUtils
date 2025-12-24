@@ -1,7 +1,7 @@
 [project]
 name = "comfyui_lg_samplingutils"
 description = "This is a toolset designed for ComfyUI by LAOGOU-666, providing a series of practical sampling nodes, making our operation more intuitive and convenient"
-version = "1.0.1"
+version = "1.0.2"
 license = { text = "LICENSE.txt" }
 dependencies = [""]
 

@@ -70,7 +70,7 @@ class LGNoiseInjection:
 
     RETURN_TYPES = ("MODEL",)
     FUNCTION = "apply"
-    CATEGORY = "🎈LAOGOU/Sampling Utils"
+    CATEGORY = "advanced/model"
     DESCRIPTION = "将参考图像的特征（如水珠、纹理等）注入到生成结果中。"
 
     def apply(self, model, vae, reference_image, strength, start_percent, end_percent, mask=None):
@@ -79,8 +79,8 @@ class LGNoiseInjection:
         
         m = model.clone()
         
-        # 编码参考图像
-        ref_latent = self._encode_reference(vae, reference_image)
+        # 编码参考图像（使用模型的 latent format）
+        ref_latent = self._encode_reference(vae, reference_image, model)
         
         # 预处理 mask
         mask_latent = None
@@ -113,11 +113,19 @@ class LGNoiseInjection:
             ref = ref_latent.to(device=cfg_result.device, dtype=cfg_result.dtype)
             
             if ref.shape[2:] != cfg_result.shape[2:]:
-                ref = F.interpolate(ref, size=cfg_result.shape[2:], mode='bilinear', align_corners=False)
+                # 根据张量维度选择插值模式
+                if len(ref.shape) == 5:  # 5D张量 [B, C, T, H, W]
+                    ref = F.interpolate(ref, size=cfg_result.shape[2:], mode='trilinear', align_corners=False)
+                else:  # 4D张量 [B, C, H, W]
+                    ref = F.interpolate(ref, size=cfg_result.shape[2:], mode='bilinear', align_corners=False)
             
             if ref.shape[0] != cfg_result.shape[0]:
                 if ref.shape[0] == 1:
-                    ref = ref.expand(cfg_result.shape[0], -1, -1, -1)
+                    # 根据张量维度调整expand
+                    if len(ref.shape) == 5:
+                        ref = ref.expand(cfg_result.shape[0], -1, -1, -1, -1)
+                    else:
+                        ref = ref.expand(cfg_result.shape[0], -1, -1, -1)
                 else:
                     ref = ref[:cfg_result.shape[0]]
             
@@ -127,11 +135,19 @@ class LGNoiseInjection:
                 current_mask = mask_latent.to(device=cfg_result.device, dtype=cfg_result.dtype)
                 # 调整 mask 尺寸到 latent 空间
                 if current_mask.shape[2:] != cfg_result.shape[2:]:
-                    current_mask = F.interpolate(current_mask, size=cfg_result.shape[2:], mode='bilinear', align_corners=False)
+                    # 根据张量维度选择插值模式
+                    if len(current_mask.shape) == 5:  # 5D张量 [B, C, T, H, W]
+                        current_mask = F.interpolate(current_mask, size=cfg_result.shape[2:], mode='trilinear', align_corners=False)
+                    else:  # 4D张量 [B, C, H, W]
+                        current_mask = F.interpolate(current_mask, size=cfg_result.shape[2:], mode='bilinear', align_corners=False)
                 # 调整 batch size
                 if current_mask.shape[0] != cfg_result.shape[0]:
                     if current_mask.shape[0] == 1:
-                        current_mask = current_mask.expand(cfg_result.shape[0], -1, -1, -1)
+                        # 根据张量维度调整expand
+                        if len(current_mask.shape) == 5:
+                            current_mask = current_mask.expand(cfg_result.shape[0], -1, -1, -1, -1)
+                        else:
+                            current_mask = current_mask.expand(cfg_result.shape[0], -1, -1, -1)
                     else:
                         current_mask = current_mask[:cfg_result.shape[0]]
             
@@ -170,11 +186,13 @@ class LGNoiseInjection:
         
         return (m,)
     
-    def _encode_reference(self, vae, reference_image):
+    def _encode_reference(self, vae, reference_image, model):
         """编码参考图像"""
         loaded_models = comfy.model_management.loaded_models(only_currently_used=True)
         latent = vae.encode(reference_image)
-        latent = comfy.latent_formats.Flux().process_in(latent)
+        # 使用模型自己的 latent format，而不是硬编码 Flux
+        latent_format = model.get_model_object("latent_format")
+        latent = latent_format.process_in(latent)
         comfy.model_management.load_models_gpu(loaded_models)
         logging.warning(f"[FeatureInj] Reference encoded: shape={latent.shape}")
         return latent
@@ -242,7 +260,7 @@ class LGNoiseInjectionLatent:
 
     RETURN_TYPES = ("MODEL",)
     FUNCTION = "apply"
-    CATEGORY = "🎈LAOGOU/Sampling Utils"
+    CATEGORY = "advanced/model"
     DESCRIPTION = "直接输入 latent 进行特征注入，自动使用 latent 的 noise_mask 作为遮罩。"
 
     def apply(self, model, reference_latent, strength, start_percent, end_percent):
@@ -288,11 +306,19 @@ class LGNoiseInjectionLatent:
             ref = ref_latent.to(device=cfg_result.device, dtype=cfg_result.dtype)
             
             if ref.shape[2:] != cfg_result.shape[2:]:
-                ref = F.interpolate(ref, size=cfg_result.shape[2:], mode='bilinear', align_corners=False)
+                # 根据张量维度选择插值模式
+                if len(ref.shape) == 5:  # 5D张量 [B, C, T, H, W]
+                    ref = F.interpolate(ref, size=cfg_result.shape[2:], mode='trilinear', align_corners=False)
+                else:  # 4D张量 [B, C, H, W]
+                    ref = F.interpolate(ref, size=cfg_result.shape[2:], mode='bilinear', align_corners=False)
             
             if ref.shape[0] != cfg_result.shape[0]:
                 if ref.shape[0] == 1:
-                    ref = ref.expand(cfg_result.shape[0], -1, -1, -1)
+                    # 根据张量维度调整expand
+                    if len(ref.shape) == 5:
+                        ref = ref.expand(cfg_result.shape[0], -1, -1, -1, -1)
+                    else:
+                        ref = ref.expand(cfg_result.shape[0], -1, -1, -1)
                 else:
                     ref = ref[:cfg_result.shape[0]]
             
@@ -302,11 +328,19 @@ class LGNoiseInjectionLatent:
                 current_mask = mask_latent.to(device=cfg_result.device, dtype=cfg_result.dtype)
                 # 调整 mask 尺寸到 latent 空间
                 if current_mask.shape[2:] != cfg_result.shape[2:]:
-                    current_mask = F.interpolate(current_mask, size=cfg_result.shape[2:], mode='bilinear', align_corners=False)
+                    # 根据张量维度选择插值模式
+                    if len(current_mask.shape) == 5:  # 5D张量 [B, C, T, H, W]
+                        current_mask = F.interpolate(current_mask, size=cfg_result.shape[2:], mode='trilinear', align_corners=False)
+                    else:  # 4D张量 [B, C, H, W]
+                        current_mask = F.interpolate(current_mask, size=cfg_result.shape[2:], mode='bilinear', align_corners=False)
                 # 调整 batch size
                 if current_mask.shape[0] != cfg_result.shape[0]:
                     if current_mask.shape[0] == 1:
-                        current_mask = current_mask.expand(cfg_result.shape[0], -1, -1, -1)
+                        # 根据张量维度调整expand
+                        if len(current_mask.shape) == 5:
+                            current_mask = current_mask.expand(cfg_result.shape[0], -1, -1, -1, -1)
+                        else:
+                            current_mask = current_mask.expand(cfg_result.shape[0], -1, -1, -1)
                     else:
                         current_mask = current_mask[:cfg_result.shape[0]]
             

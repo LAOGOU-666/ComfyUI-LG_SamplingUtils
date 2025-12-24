@@ -73,18 +73,20 @@ class SigmasEditor:
         # Send sigmas data to frontend via PromptServer (只有输入sigmas改变时才发送)
         if unique_id is not None:
             # 只根据输入的sigmas创建缓存键（不包括adjustments）
-            current_sigmas_key = tuple(sigmas_np.tolist())
+            # 使用 hash(sigmas_np.tobytes()) 避免浮点数精度比较问题
+            current_sigmas_key = hash(sigmas_np.tobytes())
             
             # 检查是否与上次输入的sigmas相同
             last_sigmas_key = self._last_sent_data.get(unique_id)
             
             # 只有输入sigmas改变时才发送数据到前端
             if last_sigmas_key != current_sigmas_key:
+                # 当输入sigmas改变时，不发送旧的调整值，让前端重置为原始值
                 PromptServer.instance.send_sync("sigmas_editor_update", {
                     "node_id": unique_id,
                     "sigmas_data": {
                         "original": sigmas_np.tolist(),
-                        "adjusted": adjusted_sigmas.tolist(),
+                        "adjusted": None,  # 重置为None，让前端使用新的原始值
                     }
                 })
                 
